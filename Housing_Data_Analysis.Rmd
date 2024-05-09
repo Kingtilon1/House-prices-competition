@@ -1,0 +1,428 @@
+---
+title: "Analysis of Housing train"
+author: "Tilon Bobb"
+date: "May 08, 2024"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## train Loading and Initial Exploration
+
+We begin by loading the trainset from a URL and taking a preliminary
+look at its structure.
+
+```{r load-train}
+train <- read.csv("https://raw.githubusercontent.com/Kingtilon1/House-prices-competition/main/train.csv", stringsAsFactors = FALSE)
+head(train)
+summary(train)
+```
+
+## Identification of Variables
+
+We identify quantitative variables and check for skewness, choosing
+`LotArea` as $X$ and `SalePrice` as $Y$.
+
+```{r identify-variables}
+library(ggplot2)
+ggplot(train, aes(x=LotArea)) + geom_histogram(bins=30, fill="blue", color="black") +
+  ggtitle("Distribution of LotArea") + theme_minimal()
+ggplot(train, aes(x=SalePrice)) + geom_histogram(bins=30, fill="red", color="black") +
+  ggtitle("Distribution of SalePrice") + theme_minimal()
+```
+
+## Calculation of Probabilities and Independence Check
+
+### Calculation of Quartiles and Probabilities
+
+We calculate the necessary quartiles and probabilities.
+
+```{r calculate-probabilities}
+x_third_quartile <- quantile(train$LotArea, 0.75)
+y_second_quartile <- quantile(train$SalePrice, 0.5)
+
+condition_X_greater_x <- train$LotArea > x_third_quartile
+condition_Y_greater_y <- train$SalePrice > y_second_quartile
+
+prob_X_greater_x <- mean(condition_X_greater_x)
+prob_Y_greater_y <- mean(condition_Y_greater_y)
+prob_X_greater_x_given_Y_greater_y <- mean(train$LotArea[condition_Y_greater_y] > x_third_quartile)
+prob_X_greater_x_and_Y_greater_y <- mean(condition_X_greater_x & condition_Y_greater_y)
+prob_X_less_x_given_Y_greater_y <- mean(train$LotArea[condition_Y_greater_y] < x_third_quartile)
+
+cat("P(X > x): ", prob_X_greater_x, "\nP(Y > y): ", prob_Y_greater_y, "\nP(X > x | Y > y): ", prob_X_greater_x_given_Y_greater_y,
+    "\nP(X > x and Y > y): ", prob_X_greater_x_and_Y_greater_y, "\nP(X < x | Y > y): ", prob_X_less_x_given_Y_greater_y)
+```
+
+1: P(X\>x)=0.25: This probability indicates that 25% of the properties
+have a lot area greater than the third quartile of all lot areas in the
+dataset. This is by definition of the quartile, as the third quartile
+(75th percentile) is the value below which 75% of the data fall. 𝑃 ( 𝑌
+\> 𝑦 ) = 0.4986301
+
+2: P(Y\>y)=0.4986301: About 49.9% of the properties have a sale price
+higher than the median (second quartile, 50th percentile) sale price.
+This is very close to 50%, as expected, because the median is the middle
+value in a data set.
+
+3: 𝑃 ( 𝑋 \> 𝑥 ∣ 𝑌 \> 𝑦 ) = 0.3791209 P(X\>x∣Y\>y)=0.3791209: Given that
+a property's sale price is above the median, there is approximately a
+37.9% chance that its lot area is also above the third quartile. This
+suggests that among higher-priced homes, a significantly large
+proportion also have larger lot areas, though not the majority.
+
+4: 𝑃 ( 𝑋 \> 𝑥 ∧ 𝑌 \> 𝑦 ) = 0.1890411 P(X\>x∧Y\>y)=0.1890411: There is an
+18.9% chance that a property will have both a sale price above the
+median and a lot area greater than the third quartile. This joint
+probability is less than the product of the individual probabilities ( 𝑃
+( 𝑋 \> 𝑥 ) × 𝑃 ( 𝑌 \> 𝑦 ) P(X\>x)×P(Y\>y)), indicating a possible
+dependency between lot area and sale price --- large lot areas tend to
+occur with higher prices, but not as frequently as might be expected if
+the two were independent.
+
+5: 𝑃 ( 𝑋 \< 𝑥 ∣ 𝑌 \> 𝑦 ) = 0.6208791 P(X\<x∣Y\>y)=0.6208791: Given a
+property's sale price is above the median, there is a 62.1% chance that
+its lot area is less than the third quartile. This indicates that even
+among higher-priced homes, it's more common for the lot area to be in
+the smaller three-quarters of all lot areas. \### Chi-Square Test for
+Independence
+
+# Creating a table of counts
+
+## Additional Analysis: Contingency Table of Counts
+
+To further analyze the relationship between `LotArea` (X) and
+`SalePrice` (Y), we create a contingency table that categorizes
+properties based on whether they fall above or below these quartiles.
+
+```{r contingency-table}
+train$X_group <- ifelse(train$LotArea > x_third_quartile, ">3rd quartile", "<=3rd quartile")
+train$Y_group <- ifelse(train$SalePrice > y_second_quartile, ">2nd quartile", "<=2nd quartile")
+
+count_table <- table(train$X_group, train$Y_group)
+addmargins(count_table)
+```
+
+## Interpretation of Contingency Table
+
+The contingency table reveals insightful patterns about the distribution
+of `LotArea` and `SalePrice` among the properties:
+
+-   **Properties with `LotArea` \<= 3rd Quartile and `SalePrice` \<= 2nd
+    Quartile (643 properties)**: This is the most populous category,
+    indicating that the majority of properties in the dataset feature
+    lot areas that are smaller or up to the median size and are priced
+    at or below the median sale price. These properties represent a
+    typical, more affordable segment of the housing market.
+
+-   **Properties with `LotArea` \<= 3rd Quartile and `SalePrice` \> 2nd
+    Quartile (452 properties)**: A significant number of properties have
+    smaller or average-sized lots but are priced above the median. This
+    suggests that factors other than lot size, such as location, home
+    features, or market conditions, may be contributing to higher
+    property values in this group.
+
+-   **Properties with `LotArea` \> 3rd Quartile and `SalePrice` \<= 2nd
+    Quartile (89 properties)**: Fewer properties fall into this category
+    where larger lot sizes do not correspond to higher prices, possibly
+    indicating underdeveloped areas or locales where land is less of a
+    premium factor in determining house prices.
+
+-   **Properties with `LotArea` \> 3rd Quartile and `SalePrice` \> 2nd
+    Quartile (276 properties)**: These properties represent a premium
+    segment of the market, where both larger lot sizes and higher prices
+    coincide. This could suggest more desirable locations or luxury
+    estates where buyers are willing to pay a premium for more space.
+
+The distribution highlights the nuanced relationship between lot size
+and property price, showing that while there is a tendency for larger
+lots to fetch higher prices, many properties defy this trend due to
+other influencing factors.
+
+```{r chi-square-test}
+table_A_B <- table(condition_X_greater_x, condition_Y_greater_y)
+chisq.test(table_A_B)
+```
+
+### Analysis of Independence Using Chi-Square Test
+
+The Chi-Square test results provide a strong indication of the
+relationship between `LotArea` (X) and `SalePrice` (Y) when split by the
+3rd and 2nd quartiles, respectively. The test yields a Chi-Square
+statistic of 127.74 with a p-value significantly less than 0.05 (p-value
+\< 2.2e-16), which strongly rejects the null hypothesis of independence.
+This means that splitting the data by these quartiles does not result in
+independent subsets; rather, there is a significant association between
+larger lot areas and higher sale prices.
+
+Additionally, when we compare the calculated probabilities: - $P(A|B)$
+(the probability of $X > x$ given $Y > y$) is 0.3791209. - $P(A)P(B)$
+(the product of the probabilities $P(X > x)$ and $P(Y > y)$), which is
+calculated as $0.25 \times 0.4986301 = 0.1246575$.
+
+The inequality $P(A|B) \neq P(A)P(B)$ indicates a dependency between the
+variables, where properties with a higher sale price are more likely to
+also have a larger lot area than would be expected under the condition
+of independence. The result of this mathematical check aligns with the
+Chi-Square test, further affirming that the variables are not
+independent.
+
+In summary, the statistical evidence from both the probability
+calculations and the Chi-Square test confirms that the manner in which
+the training data has been split (based on quartiles of `LotArea` and
+`SalePrice`) leads to a dependent relationship between the two
+variables. This dependency should be considered when analyzing or
+modeling these real estate data.
+
+### Univariate Descriptive Statistics and Plots
+
+We start by providing basic descriptive statistics for the entire
+dataset, focusing particularly on `LotArea` and `SalePrice`.
+
+```{r descriptive-stats}
+summary(train$LotArea)
+summary(train$SalePrice)
+```
+
+The summaries of LotArea and SalePrice illustrate key characteristics of
+the real estate market in the dataset. The LotArea ranges significantly
+from 1,300 to 215,245 square feet, indicating diverse property sizes,
+while the SalePrice varies from \$34,900 to \$755,000, reflecting a wide
+economic spread in property values. Both distributions are right-skewed,
+as indicated by means higher than medians, typical for real estate where
+a few high values can skew the average upward. These statistics are
+vital for understanding property size and pricing dynamics within the
+market.
+
+```{r scatterplot}
+plot(train$LotArea, train$SalePrice, main="Scatterplot of LotArea vs SalePrice",
+     xlab="LotArea", ylab="SalePrice", pch=19, col=rgb(0.1, 0.2, 0.5, 0.7))
+```
+
+The scatter plot of LotArea versus SalePrice reveals a broadly positive
+relationship, indicating that properties with larger lot areas generally
+tend to have higher sale prices. However, the relationship isn't
+strictly linear, and there is significant variability, especially among
+properties with larger lot areas. Most data points cluster toward the
+lower end of both axes, suggesting that smaller, more affordable
+properties are more prevalent. Outliers and the spread of data points at
+higher lot areas underscore that factors other than lot size, such as
+location and property features, also significantly influence sale
+prices.
+
+### 3. 95% Confidence Interval for the Difference in the Mean of the Variables
+
+### 95% Confidence Interval for the Difference in Mean
+
+We compute the 95% confidence interval for the difference in the mean of
+`LotArea` and `SalePrice`.
+
+```{r ci-difference-mean}
+lot_mean <- mean(train$LotArea)
+sale_mean <- mean(train$SalePrice)
+se_diff <- sqrt(var(train$LotArea)/length(train$LotArea) + var(train$SalePrice)/length(train$SalePrice))
+ci_lower <- (lot_mean - sale_mean) - qt(0.975, df=min(length(train$LotArea), length(train$SalePrice))-1) * se_diff
+ci_upper <- (lot_mean - sale_mean) + qt(0.975, df=min(length(train$LotArea), length(train$SalePrice))-1) * se_diff
+c(ci_lower, ci_upper)
+```
+
+The output displays a 95% confidence interval for the difference in
+means between LotArea and SalePrice, ranging from approximately
+-174,514.8 to -166,293.9. This interval suggests that SalePrice is, on
+average, significantly higher than LotArea by this range of values. The
+negative sign indicates the direction of the difference due to the
+subtraction order in the calculation (LotArea minus SalePrice). This
+statistically significant difference highlights distinct scales and
+units between the two variables, reaffirming their disparate magnitudes
+in the dataset.
+
+### Correlation Matrix and Hypothesis Testing
+
+First,I'll get the correlation matrix for `LotArea` and `SalePrice`.
+
+```{r correlation-matrix}
+cor_matrix <- cor(train[,c("LotArea", "SalePrice")])
+cor_matrix
+```
+
+The output presents a correlation matrix between LotArea and SalePrice,
+showing a correlation coefficient of approximately 0.264 between these
+two variables. This value indicates a positive but weak correlation,
+suggesting that while there is some degree of association where larger
+lot areas tend to correlate with higher sale prices, the relationship is
+not strongly linear. The coefficients on the diagonal (1.0000000)
+confirm that each variable perfectly correlates with itself, as
+expected.
+
+Next, lets test the hypothesis that the correlation between LotArea and
+SalePrice is 0, using a t-test and provide a 99% confidence interval.
+
+```{r}
+cor_test <- cor.test(train$LotArea, train$SalePrice)
+cor_test
+
+t_value <- cor_test$estimate / cor_test$std.error
+df <- cor_test$parameter
+cor_ci_lower <- cor_test$estimate - qt(0.995, df) * cor_test$std.error
+cor_ci_upper <- cor_test$estimate + qt(0.995, df) * cor_test$std.error
+c(cor_ci_lower, cor_ci_upper)
+```
+
+The correlation test performed between LotArea and SalePrice
+demonstrates a statistically significant but modest positive correlation
+of approximately 0.264, as confirmed by the Pearson's product-moment
+correlation test. This result, with a t-value of 10.445 and 1458 degrees
+of freedom, leads to a p-value less than 2.2e-16, strongly rejecting the
+null hypothesis that no correlation exists between the two variables.
+The 99% confidence interval for this correlation, extending from 0.215
+to 0.311, solidifies the finding that larger lot areas are generally
+associated with higher sale prices, suggesting that while lot size does
+impact sale price, other factors also play significant roles in
+determining property values. This correlation is indicative of a
+relationship where properties with greater lot areas tend to command
+higher prices, although the relationship is not overwhelmingly strong.
+
+### Inverting the Correlation Matrix and Matrix Operations
+
+Calculate and invert the correlation matrix, then perform matrix
+multiplications:
+
+```{r matrix-operations}
+cor_matrix <- cor(train[,c("LotArea", "SalePrice")])
+precision_matrix <- solve(cor_matrix)
+
+mult_cor_prec <- cor_matrix %*% precision_matrix
+
+mult_prec_cor <- precision_matrix %*% cor_matrix
+
+mult_cor_prec
+```
+
+### Conducting Principal Components Analysis (PCA)
+
+Principal Components Analysis (PCA) is a statistical technique used to
+reduce the dimensionality of a dataset, increasing interpretability
+while minimizing information loss. It transforms the data into a new
+coordinate system, such that the greatest variance comes to lie on the
+first few principal axes.
+
+### Principal Components Analysis (PCA)
+
+Conduct PCA on the selected variables and interpret the results:
+
+```{r pca-analysis}
+library(stats)
+pca_result <- prcomp(train[,c("LotArea", "SalePrice")], scale. = TRUE)
+
+summary(pca_result)
+
+plot(pca_result, type = "lines")
+```
+
+The PCA analysis performed on the "LotArea" and "SalePrice" variables
+reveals that the first principal component (PC1) accounts for the
+majority of the variability in the data (63.19%), with a standard
+deviation of approximately 1.1242. PC2 captures additional variability
+(36.81%) orthogonal to PC1. Together, PC1 and PC2 explain 100% of the
+total variability in the data. This suggests that PC1 represents the
+primary trend in the dataset, while PC2 captures secondary patterns not
+explained by PC1.
+
+### Preparing Data and Fitting Exponential Distribution
+
+```{r fit-exponential}
+library(MASS)
+
+shifted_lot_area <- train$LotArea - min(train$LotArea) + 1
+
+fit <- fitdistr(shifted_lot_area, densfun = "exponential")
+
+lambda <- fit$estimate
+lambda
+```
+
+### Sample from the Fitted Distribution and Plot Histograms
+
+After fitting the distribution, sample from it and compare the results
+with the original data through histograms.
+
+\### Sampling and Plotting
+
+```{r sample-plot}
+samples <- rexp(1000, rate = lambda)
+
+hist(samples, main="Histogram of Exponential Samples", col="blue", breaks=30)
+
+hist(shifted_lot_area, main="Histogram of Shifted LotArea", col="red", breaks=30)
+```
+
+### Calculate Percentiles and Confidence Intervals
+
+Find percentiles using the exponential probability density function and
+generate confidence intervals for empirical data.
+
+### Percentiles and Confidence Intervals
+
+```{r percentiles-ci}
+exp_5th <- qexp(0.05, rate = lambda)
+exp_95th <- qexp(0.95, rate = lambda)
+
+empirical_5th <- quantile(shifted_lot_area, 0.05)
+empirical_95th <- quantile(shifted_lot_area, 0.95)
+
+mean_lot <- mean(train$LotArea)
+sd_lot <- sd(train$LotArea)
+n_lot <- length(train$LotArea)
+ci_lower <- mean_lot - qt(0.975, df=n_lot-1) * sd_lot / sqrt(n_lot)
+ci_upper <- mean_lot + qt(0.975, df=n_lot-1) * sd_lot / sqrt(n_lot)
+
+list(exp_5th = exp_5th, exp_95th = exp_95th, empirical_5th = empirical_5th, empirical_95th = empirical_95th, ci_lower = ci_lower, ci_upper = ci_upper)
+```
+
+I adjusted LotArea for fitting an exponential distribution, revealing a
+λ (lambda) parameter of approximately 0.0001085, indicating a relatively
+slow rate of decay. The comparison between histograms of the sampled
+data and the actual data shows that while the exponential model roughly
+captures the distribution's right skewness, it fails to accurately
+represent the distribution's tail behavior, particularly at higher
+values. Descriptive statistics highlight this by showing significant
+variance in LotArea values, ranging from 1,300 to 215,245 square feet.
+The empirical 5th (2,012.7 sq ft) and 95th (16,102.15 sq ft) percentiles
+of LotArea contrast with those derived from the exponential model
+(472.81 for 5th and 27,614.15 for 95th), underscoring the model's
+limitations in predicting extreme values. Moreover, the correlation
+between LotArea and SalePrice is moderately weak at 0.264, suggesting
+limited linear predictability between lot size and sale price. The 95%
+confidence interval for the mean LotArea (10,004.42 to 11,029.24)
+further quantifies uncertainty in estimating the average lot size,
+reinforcing the need for a more nuanced model to fully capture LotArea
+characteristics in the real estate market context. This comprehensive
+analysis not only quantifies various statistical properties of LotArea
+but also highlights the necessity of selecting appropriate models to
+reflect its distribution accurately.
+
+### Building the Regression Model
+
+```{r regression-model}
+library(stats)
+
+model <- lm(SalePrice ~ LotArea, data=train)
+
+summary(model)
+```
+The linear regression model, using LotArea to predict SalePrice, shows that each additional square foot of lot area increases the sale price by approximately $2.10, statistically significant with a p-value less than 2e-16. The model has a relatively low R-squared value of 0.06961, indicating that LotArea alone explains about 6.96% of the variance in SalePrice, suggesting other factors also play significant roles in determining property prices. The residuals indicate that while the model captures central tendencies, there is considerable variability in predictions, with errors ranging from about -$275,668 to $553,356. The intercept value of approximately $158,800 suggests that the base price for the smallest properties in the dataset is substantial. Overall, the model highlights the positive, yet limited influence of LotArea on SalePrice and underscores the need for more complex models to better capture the dynamics of real estate pricing.
+
+
+```{r}
+test <- read.csv('https://raw.githubusercontent.com/Kingtilon1/House-prices-competition/main/test.csv')
+
+predictions <- predict(model, newdata = test)
+submission <- data.frame(Id = test$Id, SalePrice = predictions)
+write.csv(submission, "submission.csv", row.names = FALSE)
+```
+
